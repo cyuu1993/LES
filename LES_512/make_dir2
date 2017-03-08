@@ -1,0 +1,14 @@
+#!/bin/sh
+path='/glade/p/work/liqi1026/CBL/CBL_512'
+path2='/glade/p/work/liqi1026/CBL/CBL_256'
+for i in {1..1}
+do
+cp param.f90 $path2
+cd $path2
+make
+make clean
+cp test_cbl $path
+cd $path
+bsub <np_lagrange.lsf
+done
+

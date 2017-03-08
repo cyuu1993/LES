@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [[ $# -lt 1 ]]
+then
+	echo "Usage:"
+	echo "copy_progs_CVS.scr <Directory path>"
+	echo "Ex: copy_progs_CVS.scr ./demo_progs"
+	echo 
+	exit 1
+fi
+
+OBJECTS="avgpatch.f avgslice.f convec.f ddx.f ddxy.f ddy.f ddz_uv.f \
+                ddz_w.f dealias1.f dealias2.f derivwall2.f \
+		derivwall_dns.f divstress_uv.f divstress_w.f \
+		dns_stress.f energy.f filt_da.f ic.f ic_dns.f \
+		interpolag_Ssim.f lagrange_Ssim.f dimen.h\
+                les_conv.f  openfiles.f Makefile\
+		padd.f patches.f press_stag.f ran3.f resolve.f \
+		rmsdiv.f setsponge.f  sgs_stag_w.f stepbl_w.f \
+		tridag.f unpadd.f wallstress2.f wallstress_dns.f \
+		wavenumber.f std_dynamic_w.f test_filter.f \
+		test_filter_init.f scaledep_dynamic_w.f rtnewt.f \
+		ic_scal.f scalar_in.f slice_vij.f scalar_slice.f \
+                calcbeta.f scal_rhs2.f obukhov.f step_s.f \
+                timestep.f obukhov_slice.f "
+
+echo $OBJECTS
+cp -vf $OBJECTS $1
+
+#cp -ivu $OBJECTS ./temp_aug
+

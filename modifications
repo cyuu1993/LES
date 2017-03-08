@@ -1,0 +1,78 @@
+-------------------------------------------------------------------------------
+energy.f90
+-------------------------------------------------------------------------------
+! SKS commented this
+! !    if (ieee_is_finite (ke)) then
+!      if (isnan (ke)) then
+!         write (*, *) 'NaN in ke at (jx, jy, jz) =', jx, jy, jz
+!         write (*, *) 'jt = ', jt
+!         write (*, *) 'u = ', u(jx, jy, jz)
+!         write (*, *) 'v = ', v(jx, jy, jz)
+!         write (*, *) 'w = ', w(jx, jy, jz)
+!         nan_flag = .true.
+!       end if
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+makefile
+-------------------------------------------------------------------------------
+# SKS
+ARCH = linux_intel
+#ARCH = linux_intel_81
+# SKS
+
+# SKS
+USE_LVLSET = no
+# USE_LVLSET = yes
+# SKS - Does this LVLSET mean level set ??
+
+# SKS
+# ifeq ($(ARCH),linux_intel_81)
+ifeq ($(ARCH),linux_intel)
+# SKS
+
+# SKS
+  FC = f95
+# FC = gfortran
+# FC = ifc
+# SKS
+
+# SKS
+# FFLAGS += -warn all 
+# SKS
+
+# SKS
+  LDFLAGS =
+# LDFLAGS = -nothreads
+# SKS
+
+# SKS
+# LIBPATH = -L/home/ebouzeid/LES/fftw-2.1.5/lib
+  LIBPATH = -L/home/stimit/installSOFTWARE/fftw-2.1.5/lib
+# SKS
+
+# SKS
+  LIBS = $(LIBPATH) -lrfftw -lfftw -lm
+# LIBS = $(LIBPATH) -libfftw -libfftw -lm
+# SKS
+
+# SKS
+# MODDIR = -I$(MPATH) -module $(MPATH)  # where look for/put .mod files
+  MODDIR = -I$(MPATH) -J$(MPATH)  # where look for/put .mod files
+# SKS
+
+# SKS
+  /home/stimit/installSOFTWARE/makedepf90-2.8.8/makedepf90 -r $(COMPSTR) -b $(OPATH) -o $(EXE) $(SRCS) > .depend
+# /home/ebouzeid/LES/makedepf90-2.6.2/bin/makedepf90 -r $(COMPSTR) -b $(OPATH) -o $(EXE) $(SRCS) > .depend
+# SKS
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+main.f90
+-------------------------------------------------------------------------------
+! SKS
+  jt_diurnal=jt_total+1-(86400._rprec/(dt*z_i/u_star))
+! jt_diurnal=jt_total+1-nint(86400._rprec/(dt*z_i/u_star))
+! SKS - NINT(X) rounds its argument to the nearest whole number.
+-------------------------------------------------------------------------------
+
