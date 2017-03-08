@@ -30,7 +30,7 @@ real(rprec),dimension(ld,ny,$lbz:nz)::txx,txy,tyy
 real(rprec),dimension(ld,ny,$lbz:nz)::txz,tyz,tzz
 real(kind=rprec),dimension(ld,ny,0:nz)::p
 real(rprec),dimension(ld,ny,$lbz:nz)::divtx,divty,divtz
-real(kind=rprec),dimension(ld,ny,$lbz:nz)::theta,q
+real(kind=rprec),dimension(ld,ny,$lbz:nz)::theta,theta_diffusion,q
 
 ! SKS
 real(kind=rprec),dimension(4,nx/2,nz-1)::avg_spectra_uvwT=0._rprec

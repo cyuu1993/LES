@@ -3,7 +3,7 @@ use types,only:rprec
 use param !, jt_global => jt  !--rename to avoid name clashes
 ! could also modify all routines to access jt from param module, not argument list
 use bottombc !makes obukhov functions available
-use sim_param,only:u,v,w,theta,q,path
+use sim_param,only:u,v,w,theta,q,path,theta_diffusion
 use sgsmodule,only: Nu_t
 use scalars_module,only: L,wstar,dTdz,dqdz,sgs_t3,sgs_q3 
 implicit none
@@ -429,107 +429,263 @@ end subroutine scalar_in
 !!!xxxxxxxxxxxx--------VIJ-------------XXXXXXXXXXXXXXXXXXX
 !!!xxxxxxxxxx-------scalar output subroutine-----XXXXXXXXXXXXXXXXXXXXX
 
+!subroutine scalar_slice()
+!!c This is exactly the same like the subroutine avgslice with the
+!!c only difference being that it averages the scalar variables
+!!c to find the y-averaged instantaneous x-z slices of variables
+!!c t,q,sgs_t3,sgs_q3 and their variances such as t2, q2.
+!!c It also outputs the average covariance between wt and wq
+!!use scalars_module,only: dTdz,dqdz,sgs_t3,sgs_q3 
+!!use output_slice,only: collocate_MPI_averages
+!implicit none
+!integer:: i,j,k
+!real(kind=rprec),dimension(nx,nz-1),save:: atheta,t2,q2,asgs_t3,awt
+!real(kind=rprec),dimension(nx,nz-1),save:: adTdz,anu_t,t3,var_t
+!real(kind=rprec):: ttheta1,tt2,tsgst,twt,tdTdz,arg1,arg2,fr
+!real(kind=rprec):: tnu_t,tt3
+!real(kind=rprec),dimension(:,:),allocatable:: avg_scalar_out
+!
+!fr=(1._rprec/float(p_count))*float(c_count)
+!
+!if (jt .EQ. c_count) then
+!  atheta=0._rprec;t2=0._rprec;asgs_t3=0._rprec;awt=0._rprec;adTdz=0._rprec
+!  anu_t=0._rprec;t3=0._rprec;var_t=0._rprec
+!end if
+!
+!do k=1,nz-1
+!do i=1,nx
+!ttheta1=0._rprec;tt2=0._rprec;tsgst=0._rprec;twt=0._rprec;tdTdz=0._rprec
+!tnu_t=0._rprec;tt3=0._rprec
+!
+!do j=1,ny  
+!    ttheta1=ttheta1+theta(i,j,k)
+!    tsgst=tsgst+sgs_t3(i,j,k)
+!    tdTdz=tdTdz+dTdz(i,j,k)
+!    tnu_t=tnu_t+Nu_t(i,j,k)
+!    tt2 = tt2+ theta(i,j,k)*theta(i,j,k)
+!    tt3 = tt3 + theta(i,j,k)*theta(i,j,k)*theta(i,j,k)
+!     if((k .eq. 1) .AND. ((.not. USE_MPI) .or. (USE_MPI .and. coord == 0))) then  
+!         arg1=0._rprec
+!      else  
+!         arg1=(theta(i,j,k)+theta(i,j,k-1))/2.
+!      end if
+!    twt=twt+w(i,j,k)*arg1
+!end do
+!
+!var_t(i,k)=var_t(i,k)+fr*sum((theta(1:nx,1:ny,k)-sum(theta(1:nx,1:ny,k))/(nx*ny))**2)/(nx*ny)
+!
+!atheta(i,k)=atheta(i,k)+(fr)*ttheta1/ny
+!t2(i,k) = t2(i,k) +(fr)*tt2/ny
+!t3(i,k) = t3(i,k) +(fr)*tt3/ny
+!asgs_t3(i,k)=asgs_t3(i,k)+(fr)*tsgst/ny
+!awt(i,k)=awt(i,k)+(fr)*twt/ny
+!adTdz(i,k)=adTdz(i,k)+(fr)*tdTdz/ny
+!anu_t(i,k)=anu_t(i,k)+(fr)*tnu_t/ny
+!end do
+!end do
+!      
+!if (mod(jt,p_count)==0) then
+!  allocate(avg_scalar_out(1:nx,1:nz_tot-1));
+!  call collocate_MPI_averages_N(atheta,avg_scalar_out,35,'theta')
+!  call collocate_MPI_averages_N(t2,avg_scalar_out,36,'t2')
+!  call collocate_MPI_averages_N(asgs_t3,avg_scalar_out,37,'sgs_t3')
+!  call collocate_MPI_averages_N(awt,avg_scalar_out,38,'wt')
+!  call collocate_MPI_averages_N(adTdz,avg_scalar_out,39,'dTdz')
+!  call collocate_MPI_averages_N(anu_t,avg_scalar_out,45,'Nu_t')
+!  call collocate_MPI_averages_N(t3,avg_scalar_out,46,'t3')
+!  call collocate_MPI_averages_N(var_t,avg_scalar_out,47,'var_t');deallocate(avg_scalar_out)
+!
+!atheta=0._rprec;t2=0._rprec;asgs_t3=0._rprec;awt=0._rprec;adTdz=0._rprec;
+!anu_t=0._rprec;t3=0._rprec;
+!var_t=0._rprec
+!end if
+!
+!5168      format(1400(E19.10))
+!
+!end subroutine scalar_slice
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!--The following subroutine does the collocation of the MPI arrays for
+!! averaging in avgslice and scalar_slice (in scalars_module2.f90)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!subroutine collocate_MPI_averages_N(avg_var_proc,avg_var_tot_domain,file_ind,filename_str)
+!use param
+!$if ($MPI)
+!  integer :: recvcounts(nproc)
+!  integer :: displs(nproc)
+!$endif
+!integer :: ind1,ind2,file_ind
+!
+!character (*),intent(in) :: filename_str
+!character (len=256) :: local_filename
+!real(kind=rprec),dimension(dim1_size,dim2_size)::avg_var_proc
+!real(kind=rprec),dimension(dim1_global,dim2_global)::avg_var_tot_domain
+!
+!local_filename=path//'output/aver_'//trim(filename_str)//'.out'
+!
+!  avg_var_tot_domain=0._rprec
+!$if ($MPI)
+!  recvcounts = size (avg_var_proc)
+!  displs = coord_of_rank * recvcounts 
+!  call mpi_gatherv (avg_var_proc(1,1), size (avg_var_proc), MPI_RPREC,                &
+!                    avg_var_tot_domain(1, 1), recvcounts, displs, MPI_RPREC,  &
+!                    rank_of_coord(0), comm, ierr)
+!$else
+!  avg_var_tot_domain=avg_var_proc
+!$endif
+!
+!  if((.not. USE_MPI) .or. (USE_MPI .and. coord == 0)) then  
+!  open(file_ind,file=trim(local_filename),status="unknown",position="append")
+!      if (average_dim_num .eq. 1) then
+!         do ind2=1,nz_tot-1
+!          write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,ind2),ind1=1,nx)
+!         end do
+!      else if (average_dim_num .eq. 2) then
+!         write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,1),ind1=1,nz_tot-1)
+!      end if
+!  close(file_ind)
+!  end if
+!
+! 5168     format(1400(E14.5))
+!end subroutine collocate_MPI_averages_N
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!--The following subroutine does the collocation of the MPI arrays for
+!! averaging in avgslice and scalar_slice (in scalars_module2.f90)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!subroutine collocate_MPI_averages(avg_var_proc,avg_var_tot_domain,file_ind)
+!use param
+!$if ($MPI)
+!  integer :: recvcounts(nproc)
+!  integer :: displs(nproc)
+!$endif
+!integer :: ind1,ind2,file_ind
+!real(kind=rprec),dimension(dim1_size,dim2_size)::avg_var_proc
+!real(kind=rprec),dimension(dim1_global,dim2_global)::avg_var_tot_domain
+!
+!  avg_var_tot_domain=0._rprec
+!  $if ($MPI)
+!  recvcounts = size (avg_var_proc)
+!  displs = coord_of_rank * recvcounts 
+!  call mpi_gatherv (avg_var_proc(1,1), size (avg_var_proc), MPI_RPREC,                &
+!                    avg_var_tot_domain(1, 1), recvcounts, displs, MPI_RPREC,  &
+!                    rank_of_coord(0), comm, ierr)
+!$else
+!  avg_var_tot_domain=avg_var_proc
+!$endif
+!
+!  if((.not. USE_MPI) .or. (USE_MPI .and. coord == 0)) then  
+!      if (average_dim_num .eq. 1) then
+!         do ind2=1,nz_tot-1
+!          write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,ind2),ind1=1,nx)
+!         end do
+!      else if (average_dim_num .eq. 2) then
+!         write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,1),ind1=1,nz_tot-1)
+!      end if
+!         close(file_ind)
+!  end if
+!
+!5168     format(1400(E14.5))
+!end subroutine collocate_MPI_averages
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 subroutine scalar_slice()
-!c This is exactly the same like the subroutine avgslice with the
-!c only difference being that it averages the scalar variables
-!c to find the y-averaged instantaneous x-z slices of variables
-!c t,q,sgs_t3,sgs_q3 and their variances such as t2, q2.
-!c It also outputs the average covariance between wt and wq
-!use scalars_module,only: dTdz,dqdz,sgs_t3,sgs_q3 
-!use output_slice,only: collocate_MPI_averages
+
 implicit none
 integer:: i,j,k
-real(kind=rprec),dimension(nx,nz-1),save:: atheta,t2,q2,asgs_t3,awt
-real(kind=rprec),dimension(nx,nz-1),save:: adTdz,anu_t,t3,var_t
-real(kind=rprec):: ttheta1,tt2,tsgst,twt,tdTdz,arg1,arg2,fr
-real(kind=rprec):: tnu_t,tt3
-real(kind=rprec),dimension(:,:),allocatable:: avg_scalar_out
+real(kind=rprec),dimension(nz-1),save::atheta,t2,q2,awt,at_diffusion
+real(kind=rprec),dimension(nz-1),save::adTdz,t3,var_t,asgs_t3,aNu_t
+real(kind=rprec)::ttheta1,tt2,twt,tdTdz,arg1,arg2,fr
+real(kind=rprec)::tt3,tt_diffusion,tsgst3,tNu_t
+real(kind=rprec),dimension(:),allocatable::avg_scalar_out
 
 fr=(1._rprec/float(p_count))*float(c_count)
 
 if (jt .EQ. c_count) then
-  atheta=0._rprec;t2=0._rprec;asgs_t3=0._rprec;awt=0._rprec;adTdz=0._rprec
-  anu_t=0._rprec;t3=0._rprec;var_t=0._rprec
+   atheta=0._rprec;t2=0._rprec;awt=0._rprec;adTdz=0._rprec
+   t3=0._rprec;var_t=0._rprec;at_diffusion=0._rprec;asgs_T3=0._rprec;
+   aNu_t=0._rprec;
 end if
 
 do k=1,nz-1
-do i=1,nx
-ttheta1=0._rprec;tt2=0._rprec;tsgst=0._rprec;twt=0._rprec;tdTdz=0._rprec
-tnu_t=0._rprec;tt3=0._rprec
-
-do j=1,ny  
-    ttheta1=ttheta1+theta(i,j,k)
-    tsgst=tsgst+sgs_t3(i,j,k)
-    tdTdz=tdTdz+dTdz(i,j,k)
-    tnu_t=tnu_t+Nu_t(i,j,k)
-    tt2 = tt2+ theta(i,j,k)*theta(i,j,k)
-    tt3 = tt3 + theta(i,j,k)*theta(i,j,k)*theta(i,j,k)
-     if((k .eq. 1) .AND. ((.not. USE_MPI) .or. (USE_MPI .and. coord == 0))) then  
+ttheta1=0._rprec;tt2=0._rprec;twt=0._rprec;tdTdz=0._rprec;tt3=0._rprec;
+tt_diffusion=0._rprec;tsgst3=0._rprec;tNu_t=0._rprec
+   do i=1,nx
+   do j=1,ny  
+      ttheta1=ttheta1+theta(i,j,k) !*g*EkmanD*1000._rprec/(Ugeo*Ugeo)
+      tdTdz=tdTdz+dTdz(i,j,k)
+      tt2=tt2+theta(i,j,k)*theta(i,j,k)
+      tt3=tt3+theta(i,j,k)*theta(i,j,k)*theta(i,j,k)
+      tt_diffusion=tt_diffusion+theta_diffusion(i,j,k)
+      tsgst3=tsgst3+sgs_t3(i,j,k)
+      tNu_t=tNu_t+Nu_t(i,j,k)
+      if((k .eq. 1) .AND. ((.not. USE_MPI) .or. (USE_MPI .and. coord == 0))) then  
          arg1=0._rprec
       else  
-         arg1=(theta(i,j,k)+theta(i,j,k-1))/2.
+         arg1=(theta(i,j,k)+theta(i,j,k-1))/2._rprec
       end if
-    twt=twt+w(i,j,k)*arg1
-end do
-
-var_t(i,k)=var_t(i,k)+fr*sum((theta(1:nx,1:ny,k)-sum(theta(1:nx,1:ny,k))/(nx*ny))**2)/(nx*ny)
-
-atheta(i,k)=atheta(i,k)+(fr)*ttheta1/ny
-t2(i,k) = t2(i,k) +(fr)*tt2/ny
-t3(i,k) = t3(i,k) +(fr)*tt3/ny
-asgs_t3(i,k)=asgs_t3(i,k)+(fr)*tsgst/ny
-awt(i,k)=awt(i,k)+(fr)*twt/ny
-adTdz(i,k)=adTdz(i,k)+(fr)*tdTdz/ny
-anu_t(i,k)=anu_t(i,k)+(fr)*tnu_t/ny
-end do
+      twt=twt+w(i,j,k)*arg1
+   end do
+   end do
+   var_t(k)=var_t(k)+fr*sum((100._rprec*theta(1:nx,1:ny,k) &
+           -sum(100._rprec*theta(1:nx,1:ny,k))/(real(nx*ny)))**2)/(real(nx*ny))
+  ! var_t(k)=var_t(k)+fr*sum((theta(1:nx,1:ny,k) &
+  !         -sum(theta(1:nx,1:ny,k))/(nx*ny))**2)/(nx*ny)
+   atheta(k)=atheta(k)+(fr)*ttheta1/(nx*ny)
+   t2(k) = t2(k)+(fr)*tt2/real(nx*ny)
+   t3(k) = t3(k) +(fr)*tt3/real(nx*ny)
+   awt(k)=awt(k)+(fr)*twt/(nx*ny)
+   adTdz(k)=adTdz(k)+(fr)*tdTdz/(nx*ny)
+   at_diffusion(k)=at_diffusion(k)+(fr)*tt_diffusion/(nx*ny)
+   asgs_t3(k) = asgs_t3(k)+(fr)*tsgst3/(nx*ny)
+   aNu_t(k) = aNu_t(k)+(fr)*tNu_t/(nx*ny)
 end do
       
 if (mod(jt,p_count)==0) then
-  allocate(avg_scalar_out(1:nx,1:nz_tot-1));
+  allocate(avg_scalar_out(1:nz_tot-1));
   call collocate_MPI_averages_N(atheta,avg_scalar_out,35,'theta')
   call collocate_MPI_averages_N(t2,avg_scalar_out,36,'t2')
-  call collocate_MPI_averages_N(asgs_t3,avg_scalar_out,37,'sgs_t3')
   call collocate_MPI_averages_N(awt,avg_scalar_out,38,'wt')
   call collocate_MPI_averages_N(adTdz,avg_scalar_out,39,'dTdz')
-  call collocate_MPI_averages_N(anu_t,avg_scalar_out,45,'Nu_t')
+  call collocate_MPI_averages_N(asgs_t3,avg_scalar_out,40,'sgs_t3')
+  call collocate_MPI_averages_N(aNu_t,avg_scalar_out,41,'Nu_t')
   call collocate_MPI_averages_N(t3,avg_scalar_out,46,'t3')
-  call collocate_MPI_averages_N(var_t,avg_scalar_out,47,'var_t');deallocate(avg_scalar_out)
+  call collocate_MPI_averages_N(var_t,avg_scalar_out,47,'var_t');
+  call collocate_MPI_averages_N(at_diffusion,avg_scalar_out,49,'theta_diffusion');
+  deallocate(avg_scalar_out)
 
-atheta=0._rprec;t2=0._rprec;asgs_t3=0._rprec;awt=0._rprec;adTdz=0._rprec;
-anu_t=0._rprec;t3=0._rprec;
-var_t=0._rprec
+  atheta=0._rprec;t2=0._rprec;awt=0._rprec;adTdz=0._rprec;t3=0._rprec;var_t=0._rprec;
+  at_diffusion=0._rprec;asgs_t3=0._rprec;aNu_t=0._rprec;
 end if
 
-5168      format(1400(E19.10))
+5168      format(1400(E14.5))
 
 end subroutine scalar_slice
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!--The following subroutine does the collocation of the MPI arrays for
-! averaging in avgslice and scalar_slice (in scalars_module2.f90)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!--------------------------------------------------------------------------------------------------
 subroutine collocate_MPI_averages_N(avg_var_proc,avg_var_tot_domain,file_ind,filename_str)
+
 use param
 $if ($MPI)
-  integer :: recvcounts(nproc)
-  integer :: displs(nproc)
+  integer::recvcounts(nproc)
+  integer::displs(nproc)
 $endif
-integer :: ind1,ind2,file_ind
+integer::ind1,ind2,file_ind
 
-character (*),intent(in) :: filename_str
-character (len=256) :: local_filename
-real(kind=rprec),dimension(dim1_size,dim2_size)::avg_var_proc
-real(kind=rprec),dimension(dim1_global,dim2_global)::avg_var_tot_domain
+character(*),intent(in)::filename_str
+character(len=256)::local_filename
+real(kind=rprec),dimension(dim2_size)::avg_var_proc
+real(kind=rprec),dimension(dim2_global)::avg_var_tot_domain
 
 local_filename=path//'output/aver_'//trim(filename_str)//'.out'
 
   avg_var_tot_domain=0._rprec
 $if ($MPI)
-  recvcounts = size (avg_var_proc)
-  displs = coord_of_rank * recvcounts 
-  call mpi_gatherv (avg_var_proc(1,1), size (avg_var_proc), MPI_RPREC,                &
-                    avg_var_tot_domain(1, 1), recvcounts, displs, MPI_RPREC,  &
-                    rank_of_coord(0), comm, ierr)
+  recvcounts = size(avg_var_proc)
+  displs = coord_of_rank*recvcounts 
+  call mpi_gatherv (avg_var_proc(1),size(avg_var_proc),MPI_RPREC,      &
+                    avg_var_tot_domain(1),recvcounts,displs,MPI_RPREC, &
+                    rank_of_coord(0),comm,ierr)
 $else
   avg_var_tot_domain=avg_var_proc
 $endif
@@ -538,57 +694,20 @@ $endif
   open(file_ind,file=trim(local_filename),status="unknown",position="append")
       if (average_dim_num .eq. 1) then
          do ind2=1,nz_tot-1
-          write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,ind2),ind1=1,nx)
+          write(file_ind,5168) jt*dt,avg_var_tot_domain(ind2)
          end do
       else if (average_dim_num .eq. 2) then
-         write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,1),ind1=1,nz_tot-1)
+         write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1),ind1=1,nz_tot-1)
       end if
   close(file_ind)
   end if
 
- 5168     format(1400(E14.5))
+5168     format(1400(F18.11))
 end subroutine collocate_MPI_averages_N
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!--------------------------------------------------------------------------------------------------
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!--The following subroutine does the collocation of the MPI arrays for
-! averaging in avgslice and scalar_slice (in scalars_module2.f90)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-subroutine collocate_MPI_averages(avg_var_proc,avg_var_tot_domain,file_ind)
-use param
-$if ($MPI)
-  integer :: recvcounts(nproc)
-  integer :: displs(nproc)
-$endif
-integer :: ind1,ind2,file_ind
-real(kind=rprec),dimension(dim1_size,dim2_size)::avg_var_proc
-real(kind=rprec),dimension(dim1_global,dim2_global)::avg_var_tot_domain
-
-  avg_var_tot_domain=0._rprec
-  $if ($MPI)
-  recvcounts = size (avg_var_proc)
-  displs = coord_of_rank * recvcounts 
-  call mpi_gatherv (avg_var_proc(1,1), size (avg_var_proc), MPI_RPREC,                &
-                    avg_var_tot_domain(1, 1), recvcounts, displs, MPI_RPREC,  &
-                    rank_of_coord(0), comm, ierr)
-$else
-  avg_var_tot_domain=avg_var_proc
-$endif
-
-  if((.not. USE_MPI) .or. (USE_MPI .and. coord == 0)) then  
-      if (average_dim_num .eq. 1) then
-         do ind2=1,nz_tot-1
-          write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,ind2),ind1=1,nx)
-         end do
-      else if (average_dim_num .eq. 2) then
-         write(file_ind,5168) jt*dt,(avg_var_tot_domain(ind1,1),ind1=1,nz_tot-1)
-      end if
-         close(file_ind)
-  end if
-
-5168     format(1400(E14.5))
-end subroutine collocate_MPI_averages
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!--------------------------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------------------
 
 !!!xxxxxxxxxx----------VIJ----------XXXXXXXXXXXXXXXXXXXXX
 subroutine timestep_conditions(CFL,visc_stab)

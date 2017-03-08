@@ -2,7 +2,7 @@ module scalars_module
 ! HUMIDITY subroutines in place but not yet turned on !!
 use types,only:rprec
 use param 
-use sim_param,only:u,v,w,theta,q,path
+use sim_param,only:u,v,w,theta,q,path,theta_diffusion
 use bottombc ! Includes patches subroutine
 use sgsmodule,only:Nu_t,Pr_t
 implicit none
@@ -656,6 +656,7 @@ end if
     Do j=1,Ny
     do i=1,Nx
     RHS(i,j,k) = RHS(i,j,k) + dtemp(i,j,k)
+    theta_diffusion(i,j,k) = dtemp(i,j,k)
     end do
     end do
   end do

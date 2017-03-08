@@ -1,1 +1,8 @@
 param.f90
+np_lagrange.lsf
+*.out
+*.err
+*.o
+/mod
+.depend
+test_cbl
